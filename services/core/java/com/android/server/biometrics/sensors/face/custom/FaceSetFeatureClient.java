@@ -23,8 +23,13 @@ import android.util.Slog;
 
 import com.android.internal.util.custom.faceunlock.IFaceService;
 import com.android.server.biometrics.sensors.BaseClientMonitor;
+import com.android.server.biometrics.log.BiometricContext;
+import com.android.server.biometrics.log.BiometricLogger;
+import com.android.server.biometrics.sensors.ClientMonitorCallback;
 import com.android.server.biometrics.sensors.ClientMonitorCallbackConverter;
 import com.android.server.biometrics.sensors.HalClientMonitor;
+
+import java.util.function.Supplier;
 
 class FaceSetFeatureClient extends HalClientMonitor<IFaceService> {
     private static final String TAG = "FaceSetFeatureClient";
@@ -33,11 +38,12 @@ class FaceSetFeatureClient extends HalClientMonitor<IFaceService> {
     private final int mFeature;
     private final byte[] mHardwareAuthToken;
 
-    FaceSetFeatureClient(Context context, HalClientMonitor.LazyDaemon<IFaceService> lazyDaemon,
+    FaceSetFeatureClient(Context context, Supplier<IFaceService> lazyDaemon,
                          IBinder token, ClientMonitorCallbackConverter listener, int userId,
-                         String owner, int sensorId, int feature, boolean enabled,
-                         byte[] hardwareAuthToken, int faceId) {
-        super(context, lazyDaemon, token, listener, userId, owner, 0, sensorId, 0, 0, 0);
+                         String owner, int sensorId, BiometricLogger logger, 
+                         BiometricContext biometricContext,
+                         int feature, boolean enabled, byte[] hardwareAuthToken, int faceId) {
+        super(context, lazyDaemon, token, listener, userId, owner, 0, sensorId, logger, biometricContext);
         mFeature = feature;
         mEnabled = enabled;
         mFaceId = faceId;
@@ -54,7 +60,7 @@ class FaceSetFeatureClient extends HalClientMonitor<IFaceService> {
     }
 
     @Override
-    public void start(BaseClientMonitor.Callback callback) {
+    public void start(ClientMonitorCallback callback) {
         super.start(callback);
         startHalOperation();
     }

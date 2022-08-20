@@ -663,7 +663,8 @@ public class FaceService extends SystemService {
                         getContext(),
                         new FaceSensorPropertiesInternal(
                             CustomFaceProvider.DEVICE_ID, SensorProperties.STRENGTH_STRONG, 1,
-                            new ArrayList(), 1, false, false, false), mLockoutResetDispatcher));
+                            new ArrayList(), 1, false, false, false), mLockoutResetDispatcher, 
+                            BiometricContext.getInstance(getContext())));
             }
         }
 

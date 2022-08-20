@@ -20,9 +20,15 @@ import android.content.Context;
 import android.os.RemoteException;
 import android.util.Slog;
 
+import com.android.server.biometrics.log.BiometricContext;
+import com.android.server.biometrics.log.BiometricLogger;
+
 import com.android.internal.util.custom.faceunlock.IFaceService;
 import com.android.server.biometrics.sensors.BaseClientMonitor;
+import com.android.server.biometrics.sensors.ClientMonitorCallback;
 import com.android.server.biometrics.sensors.HalClientMonitor;
+
+import java.util.function.Supplier;
 
 import java.util.Map;
 
@@ -34,17 +40,18 @@ class FaceUpdateActiveUserClient extends HalClientMonitor<IFaceService> {
     private final boolean mHasEnrolledBiometrics;
 
     FaceUpdateActiveUserClient(Context context,
-                               HalClientMonitor.LazyDaemon<IFaceService> lazyDaemon, int userId,
-                               String owner, int sensorId, int currentUserId,
+                               Supplier<IFaceService> lazyDaemon, int userId,
+                               String owner, int sensorId, BiometricLogger logger,
+                               BiometricContext biometricContext,int currentUserId,
                                boolean hasEnrolledBIometrics, Map<Integer, Long> authenticatorIds) {
-        super(context, lazyDaemon, null, null, userId, owner, 0, sensorId, 0, 0, 0);
+        super(context, lazyDaemon, null, null, userId, owner, 0, sensorId, logger, biometricContext);
         mCurrentUserId = currentUserId;
         mHasEnrolledBiometrics = hasEnrolledBIometrics;
         mAuthenticatorIds = authenticatorIds;
     }
 
     @Override
-    public void start(BaseClientMonitor.Callback callback) {
+    public void start(ClientMonitorCallback callback) {
         super.start(callback);
         if (mCurrentUserId == getTargetUserId()) {
             Slog.d(TAG, "Already user: " + mCurrentUserId + ", refreshing authenticatorId");
