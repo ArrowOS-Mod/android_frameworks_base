@@ -195,6 +195,15 @@ public class KeyguardIndicationController {
                 mMessageToShowOnScreenOn = null;
             }
         }
+
+        @Override
+        public void onScreenTurnedOff() {
+            if (mFaceDetectionRunning) {
+                mFaceDetectionRunning = false;
+                mMessageToShowOnScreenOn = null;
+                hideFaceUnlockRecognizingMessage();
+            }
+        }
     };
 
     /**
@@ -774,7 +783,7 @@ public class KeyguardIndicationController {
         );
 
         if (mDozing) {
-            updateIndication(false);
+            updateDeviceEntryIndication(false);
         }
     }
 
@@ -1127,15 +1136,6 @@ public class KeyguardIndicationController {
         @Override
         public void onTrustAgentErrorMessage(CharSequence message) {
             showBiometricMessage(message);
-        }
-
-        @Override
-        public void onScreenTurnedOff() {
-            if (mFaceDetectionRunning) {
-                mFaceDetectionRunning = false;
-                mMessageToShowOnScreenOn = null;
-                hideFaceUnlockRecognizingMessage();
-            }
         }
 
         @Override

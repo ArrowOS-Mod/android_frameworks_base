@@ -27,6 +27,7 @@ import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.pm.UserInfo;
+import android.hardware.biometrics.BiometricsProtoEnums;
 import android.hardware.biometrics.IInvalidationCallback;
 import android.hardware.biometrics.ITestSession;
 import android.hardware.biometrics.ITestSessionCallback;
@@ -50,10 +51,13 @@ import android.annotation.NonNull;
 
 import com.android.internal.util.custom.faceunlock.FaceUnlockUtils;
 import com.android.internal.util.custom.faceunlock.IFaceService;
+import com.android.server.biometrics.sensors.ClientMonitorCallback;
 import com.android.server.biometrics.SensorServiceStateProto;
 import com.android.server.biometrics.SensorStateProto;
 import com.android.server.biometrics.UserStateProto;
 import com.android.server.biometrics.Utils;
+import com.android.server.biometrics.log.BiometricContext;
+import com.android.server.biometrics.log.BiometricLogger;
 import com.android.server.biometrics.sensors.AcquisitionClient;
 import com.android.server.biometrics.sensors.AuthenticationConsumer;
 import com.android.server.biometrics.sensors.BaseClientMonitor;
@@ -83,6 +87,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 public class CustomFaceProvider implements ServiceProvider {
     public static final int DEVICE_ID = 1008;
@@ -97,7 +102,7 @@ public class CustomFaceProvider implements ServiceProvider {
     private final List<Long> mGeneratedChallengeCount;
     private final HalResultController mHalResultController;
     private final Handler mHandler;
-    private final HalClientMonitor.LazyDaemon<IFaceService> mLazyDaemon;
+    private final Supplier<IFaceService> mLazyDaemon;
     private final LockoutHalImpl mLockoutTracker;
     private final BiometricScheduler mScheduler;
     private final int mSensorId;
@@ -105,6 +110,7 @@ public class CustomFaceProvider implements ServiceProvider {
     private final UsageStats mUsageStats;
     @NonNull
     private final AtomicLong mRequestCounter = new AtomicLong(0);
+    private final BiometricContext mBiometricContext;
     private int mCurrentUserId;
     private FaceGenerateChallengeClient mGeneratedChallengeCache;
     private boolean mIsServiceBinding;
@@ -113,12 +119,13 @@ public class CustomFaceProvider implements ServiceProvider {
 
     CustomFaceProvider(Context context, FaceSensorPropertiesInternal sensorProps,
                        LockoutResetDispatcher lockoutResetDispatcher,
-                       BiometricScheduler scheduler) {
+                       BiometricScheduler scheduler, BiometricContext biometricContext) {
         mTestHalEnabled = false;
         mCurrentUserId = -10000;
         mGeneratedChallengeCount = new ArrayList<>();
         mGeneratedChallengeCache = null;
         mFaceServices = new SparseArray<>();
+        mBiometricContext = biometricContext;
         mIsServiceBinding = false;
         mSensorProperties = sensorProps;
         mContext = context;
@@ -163,8 +170,9 @@ public class CustomFaceProvider implements ServiceProvider {
     }
 
     public CustomFaceProvider(Context context, FaceSensorPropertiesInternal sensorProps,
-                              LockoutResetDispatcher lockoutResetDispatcher) {
-        this(context, sensorProps, lockoutResetDispatcher, new BiometricScheduler(context, TAG, 0, null));
+                              LockoutResetDispatcher lockoutResetDispatcher,
+                              BiometricContext biometricContext) {
+        this(context, sensorProps, lockoutResetDispatcher, new BiometricScheduler(context, TAG, 0, null), biometricContext);
     }
 
     synchronized IFaceService getDaemon() {
@@ -264,9 +272,12 @@ public class CustomFaceProvider implements ServiceProvider {
                 final FaceGenerateChallengeClient client =
                         new FaceGenerateChallengeClient(mContext, mLazyDaemon, token,
                                 new ClientMonitorCallbackConverter(receiver), userId,
-                                opPackageName, mSensorId, sSystemClock.millis());
+                                opPackageName, mSensorId, sSystemClock.millis(),
+                                createLogger(BiometricsProtoEnums.ACTION_UNKNOWN,
+                                        BiometricsProtoEnums.CLIENT_UNKNOWN),
+                                mBiometricContext);
                 mGeneratedChallengeCache = client;
-                mScheduler.scheduleClientMonitor(client, new BaseClientMonitor.Callback() {
+                mScheduler.scheduleClientMonitor(client, new ClientMonitorCallback() {
                     @Override
                     public void onClientStarted(BaseClientMonitor clientMonitor) {
                         if (client != clientMonitor) {
@@ -297,8 +308,11 @@ public class CustomFaceProvider implements ServiceProvider {
             Slog.d(TAG, "scheduleRevokeChallenge executing - no active clients");
             mGeneratedChallengeCache = null;
             final FaceRevokeChallengeClient client = new FaceRevokeChallengeClient(mContext,
-                    mLazyDaemon, token, userId, opPackageName, mSensorId);
-            mScheduler.scheduleClientMonitor(client, new BaseClientMonitor.Callback() {
+                    mLazyDaemon, token, userId, opPackageName, mSensorId,
+                    createLogger(BiometricsProtoEnums.ACTION_UNKNOWN,
+                        BiometricsProtoEnums.CLIENT_UNKNOWN),
+                    mBiometricContext);
+            mScheduler.scheduleClientMonitor(client, new ClientMonitorCallback() {
                 @Override
                 public void onClientFinished(BaseClientMonitor clientMonitor, boolean success) {
                     if (client != clientMonitor) {
@@ -331,8 +345,11 @@ public class CustomFaceProvider implements ServiceProvider {
                 final FaceEnrollClient client = new FaceEnrollClient(mContext, mLazyDaemon, token
                         , new ClientMonitorCallbackConverter(receiver), userId, hardwareAuthToken
                         , opPackageName, FaceUtils.getLegacyInstance(mSensorId), disabledFeatures
-                        , ENROLL_TIMEOUT_SEC, previewSurface, mSensorId);
-                mScheduler.scheduleClientMonitor(client, new BaseClientMonitor.Callback() {
+                        , ENROLL_TIMEOUT_SEC, previewSurface, mSensorId, 
+                        createLogger(BiometricsProtoEnums.ACTION_ENROLL,
+                            BiometricsProtoEnums.CLIENT_UNKNOWN),
+                        mBiometricContext);
+                mScheduler.scheduleClientMonitor(client, new ClientMonitorCallback() {
                     @Override
                     public void onClientFinished(BaseClientMonitor clientMonitor, boolean success) {
                         if (success) {
@@ -397,7 +414,9 @@ public class CustomFaceProvider implements ServiceProvider {
                 mScheduler.scheduleClientMonitor(new FaceAuthenticationClient(mContext,
                         mLazyDaemon, token, receiver, userId, operationId, restricted,
                         opPackageName, cookie, false, mSensorId,
-                        Utils.isStrongBiometric(mSensorId), statsClient, mLockoutTracker,
+                        createLogger(BiometricsProtoEnums.ACTION_AUTHENTICATE, statsClient),
+                        mBiometricContext,
+                        Utils.isStrongBiometric(mSensorId), mLockoutTracker,
                         mUsageStats, allowBackgroundAuthentication));
             }
         });
@@ -424,6 +443,9 @@ public class CustomFaceProvider implements ServiceProvider {
                 mScheduler.scheduleClientMonitor(new FaceRemovalClient(mContext, mLazyDaemon,
                         token, new ClientMonitorCallbackConverter(receiver), faceId, userId,
                         opPackageName, FaceUtils.getLegacyInstance(mSensorId), mSensorId,
+                        createLogger(BiometricsProtoEnums.ACTION_REMOVE,
+                            BiometricsProtoEnums.CLIENT_UNKNOWN),
+                        mBiometricContext,
                         mAuthenticatorIds));
             }
         });
@@ -445,6 +467,9 @@ public class CustomFaceProvider implements ServiceProvider {
                 mScheduler.scheduleClientMonitor(new FaceRemovalClient(mContext, mLazyDaemon,
                         token, new ClientMonitorCallbackConverter(receiver), 0, userId,
                         opPackageName, FaceUtils.getLegacyInstance(mSensorId), mSensorId,
+                        createLogger(BiometricsProtoEnums.ACTION_REMOVE,
+                            BiometricsProtoEnums.CLIENT_UNKNOWN),
+                        mBiometricContext,
                         mAuthenticatorIds));
             }
         });
@@ -460,7 +485,10 @@ public class CustomFaceProvider implements ServiceProvider {
             } else {
                 scheduleUpdateActiveUserWithoutHandler(userId);
                 mScheduler.scheduleClientMonitor(new FaceResetLockoutClient(mContext, mLazyDaemon
-                        , userId, mContext.getOpPackageName(), mSensorId, hardwareAuthToken));
+                        , userId, mContext.getOpPackageName(), mSensorId, 
+                        createLogger(BiometricsProtoEnums.ACTION_UNKNOWN,
+                            BiometricsProtoEnums.CLIENT_UNKNOWN),
+                        mBiometricContext, hardwareAuthToken));
             }
         });
     }
@@ -482,7 +510,8 @@ public class CustomFaceProvider implements ServiceProvider {
             scheduleUpdateActiveUserWithoutHandler(userId);
             mScheduler.scheduleClientMonitor(new FaceSetFeatureClient(mContext, mLazyDaemon,
                     token, new ClientMonitorCallbackConverter(receiver), userId, opPackageName,
-                    mSensorId, feature, enabled, hardwareAuthToken, faces.get(0).getBiometricId()));
+                    mSensorId, BiometricLogger.ofUnknown(mContext), mBiometricContext,
+                    feature, enabled, hardwareAuthToken, faces.get(0).getBiometricId()));
         });
     }
 
@@ -508,8 +537,9 @@ public class CustomFaceProvider implements ServiceProvider {
                 scheduleUpdateActiveUserWithoutHandler(userId);
                 final FaceGetFeatureClient client = new FaceGetFeatureClient(mContext,
                         mLazyDaemon, token, listener, userId, opPackageName, mSensorId, feature,
-                        faces.get(0).getBiometricId());
-                mScheduler.scheduleClientMonitor(client, new BaseClientMonitor.Callback() {
+                        faces.get(0).getBiometricId(), BiometricLogger.ofUnknown(mContext),
+                        mBiometricContext);
+                mScheduler.scheduleClientMonitor(client, new ClientMonitorCallback() {
                     @Override
                     public void onClientFinished(BaseClientMonitor clientMonitor, boolean success) {
                         if (success && feature == 1) {
@@ -525,20 +555,28 @@ public class CustomFaceProvider implements ServiceProvider {
         });
     }
 
-    void scheduleInternalCleanup(int userId, BaseClientMonitor.Callback callback) {
+    void scheduleInternalCleanup(int userId, ClientMonitorCallback callback) {
         mHandler.post(() -> {
             scheduleUpdateActiveUserWithoutHandler(userId);
             List<Face> enrolledList = getEnrolledFaces(mSensorId, userId);
             String opPackageName = mContext.getOpPackageName();
             mScheduler.scheduleClientMonitor(new FaceInternalCleanupClient(mContext, mLazyDaemon,
-                    userId, opPackageName, mSensorId, enrolledList,
+                    userId, opPackageName, mSensorId, 
+                    createLogger(BiometricsProtoEnums.ACTION_ENUMERATE,
+                            BiometricsProtoEnums.CLIENT_UNKNOWN),
+                    mBiometricContext, enrolledList,
                     FaceUtils.getLegacyInstance(mSensorId), mAuthenticatorIds), callback);
         });
+    }
+    
+    private BiometricLogger createLogger(int statsAction, int statsClient) {
+        return new BiometricLogger(mContext, BiometricsProtoEnums.MODALITY_FACE,
+                statsAction, statsClient);
     }
 
     @Override
     public void scheduleInternalCleanup(int sensorId, int userId,
-                                        BaseClientMonitor.Callback callback) {
+                                        ClientMonitorCallback callback) {
         scheduleInternalCleanup(userId, callback);
     }
 
@@ -640,9 +678,12 @@ public class CustomFaceProvider implements ServiceProvider {
 
     void scheduleUpdateActiveUserWithoutHandler(final int targetUserId) {
         mScheduler.scheduleClientMonitor(new FaceUpdateActiveUserClient(mContext, mLazyDaemon,
-                        targetUserId, mContext.getOpPackageName(), mSensorId, mCurrentUserId,
+                        targetUserId, mContext.getOpPackageName(), mSensorId, 
+                        createLogger(BiometricsProtoEnums.ACTION_ENUMERATE,
+                            BiometricsProtoEnums.CLIENT_UNKNOWN),
+                        mBiometricContext, mCurrentUserId,
                         !getEnrolledFaces(mSensorId, targetUserId).isEmpty(), mAuthenticatorIds),
-                new BaseClientMonitor.Callback() {
+                new ClientMonitorCallback() {
                     @Override
                     public void onClientFinished(BaseClientMonitor clientMonitor, boolean success) {
                         if (success) {

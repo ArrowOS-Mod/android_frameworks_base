@@ -430,7 +430,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
     public static final int FACE_UNLOCK_BEHAVIOR_DEFAULT = 0;
     public static final int FACE_UNLOCK_BEHAVIOR_SWIPE = 1;
     private int mFaceUnlockBehavior = FACE_UNLOCK_BEHAVIOR_DEFAULT;
-    private boolean mBouncerFullyShown;
+    private boolean mCustomBouncerFullyShown;
 
     // Face unlock
     private static final boolean mCustomFaceUnlockSupported =
@@ -2650,7 +2650,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
                 && !fpLockedout;
 
         if (shouldListen && mFaceUnlockBehavior == FACE_UNLOCK_BEHAVIOR_SWIPE
-                && !mBouncerFullyShown) {
+                && !mCustomBouncerFullyShown) {
             shouldListen = false;
         }
 
@@ -2684,8 +2684,8 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
     }
 
     public void onKeyguardBouncerFullyShown(boolean fullyShow) {
-        if (mBouncerFullyShown != fullyShow) {
-            mBouncerFullyShown = fullyShow;
+        if (mCustomBouncerFullyShown != fullyShow) {
+            mCustomBouncerFullyShown = fullyShow;
             if (mFaceUnlockBehavior == FACE_UNLOCK_BEHAVIOR_SWIPE) {
                 updateFaceListeningState(BIOMETRIC_ACTION_UPDATE);
             }
@@ -3197,7 +3197,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
         Assert.isMainThread();
         Log.d(TAG, "onKeyguardVisibilityChanged(" + showing + ")");
         mKeyguardIsVisible = showing;
-        mBouncerFullyShown = false;
+        mCustomBouncerFullyShown = false;
 
         if (showing) {
             mSecureCameraLaunched = false;
@@ -3237,7 +3237,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
     private void handleKeyguardReset() {
         if (DEBUG) Log.d(TAG, "handleKeyguardReset");
         updateBiometricListeningState(BIOMETRIC_ACTION_UPDATE);
-        mBouncerFullyShown = false;
+        mCustomBouncerFullyShown = false;
         mNeedsSlowUnlockTransition = resolveNeedsSlowUnlockTransition();
     }
 
@@ -3341,7 +3341,7 @@ public class KeyguardUpdateMonitor implements TrustManager.TrustListener, Dumpab
      * Handle {@link #MSG_REPORT_EMERGENCY_CALL_ACTION}
      */
     private void handleReportEmergencyCallAction() {
-        mBouncerFullyShown = false;
+        mCustomBouncerFullyShown = false;
         Assert.isMainThread();
         for (int i = 0; i < mCallbacks.size(); i++) {
             KeyguardUpdateMonitorCallback cb = mCallbacks.get(i).get();
