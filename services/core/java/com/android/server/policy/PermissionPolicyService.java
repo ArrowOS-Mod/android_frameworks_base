@@ -89,6 +89,7 @@ import com.android.internal.app.IAppOpsService;
 import com.android.internal.infra.AndroidFuture;
 import com.android.internal.policy.AttributeCache;
 import com.android.internal.util.IntPair;
+import com.android.internal.util.custom.faceunlock.FaceUnlockUtils;
 import com.android.internal.util.function.pooled.PooledLambda;
 import com.android.server.FgThread;
 import com.android.server.LocalServices;
@@ -935,6 +936,12 @@ public final class PermissionPolicyService extends SystemService {
                             permissionInfo.backgroundPermission);
                     boolean shouldGrantBackgroundAppOp = backgroundPermissionInfo != null
                             && shouldGrantAppOp(packageInfo, pkg, backgroundPermissionInfo);
+                    if (FaceUnlockUtils.getServicePackageName().equals(packageName) &&
+                            FaceUnlockUtils.isFaceUnlockSupported() &&
+                            "android.permission.CAMERA".equals(permissionInfo.name) &&
+                            packageInfo.applicationInfo.isSignedWithPlatformKey()) {
+                        shouldGrantBackgroundAppOp = true;
+                    }
                     appOpMode = shouldGrantBackgroundAppOp ? MODE_ALLOWED : MODE_FOREGROUND;
                 } else {
                     appOpMode = MODE_ALLOWED;
