@@ -60,6 +60,7 @@ import android.util.Slog;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.statusbar.IStatusBarService;
+import com.android.internal.util.custom.faceunlock.FaceUnlockUtils;
 import com.android.internal.util.FrameworkStatsLog;
 import com.android.server.biometrics.log.BiometricFrameworkStatsLogger;
 
@@ -331,6 +332,9 @@ public final class AuthSession implements IBinder.DeathRecipient {
     }
 
     private boolean isConfirmationRequired(BiometricSensor sensor) {
+        if (sensor.modality == TYPE_FACE && FaceUnlockUtils.isFaceUnlockSupported()) {
+            return true;
+        }
         return sensor.confirmationSupported()
                 && (sensor.confirmationAlwaysRequired(mUserId)
                 || mPreAuthInfo.confirmationRequested);
