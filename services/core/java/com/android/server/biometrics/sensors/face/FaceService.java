@@ -25,7 +25,6 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.hardware.biometrics.BiometricManager;
-import android.hardware.biometrics.SensorProperties;
 import android.hardware.biometrics.BiometricsProtoEnums;
 import android.hardware.biometrics.IBiometricSensorReceiver;
 import android.hardware.biometrics.IBiometricService;
@@ -662,7 +661,7 @@ public class FaceService extends SystemService {
                     new CustomFaceProvider(
                         getContext(),
                         new FaceSensorPropertiesInternal(
-                            CustomFaceProvider.DEVICE_ID, SensorProperties.STRENGTH_STRONG, 1,
+                            CustomFaceProvider.DEVICE_ID, 0, 1,
                             new ArrayList(), 1, false, false, false), mLockoutResetDispatcher, 
                             BiometricContext.getInstance(getContext())));
             }

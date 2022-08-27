@@ -35,7 +35,6 @@ import android.os.RemoteException;
 import android.util.Pair;
 import android.util.Slog;
 
-import com.android.internal.util.custom.faceunlock.FaceUnlockUtils;
 import com.android.server.biometrics.sensors.LockoutTracker;
 
 import java.lang.annotation.Retention;
@@ -228,9 +227,6 @@ class PreAuthInfo {
 
     private static boolean isEnabledForApp(BiometricService.SettingObserver settingObserver,
             @BiometricAuthenticator.Modality int modality, int userId) {
-        if (modality == TYPE_FINGERPRINT && FaceUnlockUtils.isFaceUnlockSupported()) {
-            return true;
-        }
         return settingObserver.getEnabledForApps(userId);
     }
 
